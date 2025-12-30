@@ -60,6 +60,10 @@ typedef struct _newstats_t {
 	uint64_t cpu_time;
 	uint64_t pic0;
 	uint64_t pic1;
+	uint64_t *response_times;	/* Array to store response times */
+	uint32_t rt_count;		/* Number of response times */
+	uint32_t rt_capacity;		/* Capacity of response times array */
+	uint64_t p0, p50, p99, p999, p9999, p99999;	/* Percentiles */
 	stats_type_t type;	/* Type (FLOWOP, TXN, GROUP, STRAND, OVERALL) */
 	uint32_t sid;	/* Strand id */
 	uint32_t gid;	/* Group id */
@@ -76,6 +80,10 @@ int newstat_begin(strand_t *, newstats_t *, uint64_t, uint64_t);
 int newstat_end(strand_t *, newstats_t *, uint64_t, uint64_t);
 void add_stats(newstats_t *s1, newstats_t *s2);
 void update_aggr_stat(uperf_shm_t *shm);
+void init_response_times(newstats_t *ns);
+void add_response_time(newstats_t *ns, uint64_t response_time);
+void calculate_percentiles(newstats_t *ns);
+void free_response_times(newstats_t *ns);
 
 
 #define	HISTORY_PER_STRAND	8192

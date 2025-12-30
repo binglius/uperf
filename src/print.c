@@ -45,12 +45,13 @@
 #include "shm.h"
 #include "goodbye.h"
 #include "numbers.h"
+#include "stats.h"
 
 extern options_t options;
 
 #define	WINDOW_WIDTH	128
 
-#define	AVG_HDR	"   Count         avg         cpu         max         min "
+#define	AVG_HDR	"   Count         avg         cpu         max         min         p0          p50         p99       p99.9      p99.99     p99.999"
 
 /* We calculate the width only on the first call to save repeated ioctls */
 static int
@@ -140,11 +141,20 @@ print_average(newstats_t *ns)
 	avg = ns->time_used/ns->count;
 	cpu = ns->cpu_time/ns->count;
 
+	/* Calculate percentiles before printing */
+	calculate_percentiles(ns);
+
 	printf("%-15s %8"PRIu64" ", ns->name, ns->count);
 	PRINT_TIME(avg, 11);
 	PRINT_TIME(cpu, 11);
 	PRINT_TIME(ns->max, 11),
 	PRINT_TIME(ns->min, 11);
+	PRINT_TIME(ns->p0, 11);
+	PRINT_TIME(ns->p50, 11);
+	PRINT_TIME(ns->p99, 11);
+	PRINT_TIME(ns->p999, 11);
+	PRINT_TIME(ns->p9999, 11);
+	PRINT_TIME(ns->p99999, 11);
 
 	if (ns->pic0 > 0) {
 		printf("%-12.0f %-12.0f\n", (double) ns->pic0/ns->count,

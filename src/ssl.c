@@ -37,6 +37,7 @@
 #include <inttypes.h>
 #include <openssl/ssl.h>
 #include <openssl/engine.h>
+#include <openssl/provider.h>
 #include <pthread.h>
 #include <string.h>
 #include "logging.h"
@@ -264,6 +265,7 @@ protocol_ssl_accept(protocol_t *p, void *options)
 	if (my_ssl_error(new_ssl_p->ssl, ret) == 0) {
 		return (newp);
 	} else {
+		uperf_log_msg(UPERF_LOG_ERROR, 0, "SSL_accept failed");
 		return (0);
 	}
 }
@@ -308,7 +310,7 @@ protocol_ssl_connect(protocol_t *p, void *options)
 
 	status = SSL_connect(ssl_p->ssl);
 	if (status <= 0) {
-		uperf_log_msg(UPERF_LOG_ERROR, 0, "ssl connect error");
+		uperf_log_msg(UPERF_LOG_ERROR, 0, "SSL_connect failed");
 		return (-1);
 	}
 	return (0);
@@ -436,6 +438,22 @@ pwd_cb(char *buf, int num, int rwflag, void *userdata)
 static int
 load_engine(const char *engine_id)
 {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+	/* OpenSSL 3.0+ uses Provider API instead of ENGINE API */
+	OSSL_PROVIDER *prov;
+	
+	if (!engine_id)
+		return (-1);
+		
+	/* Load the provider */
+	prov = OSSL_PROVIDER_load(NULL, engine_id);
+	if (!prov) {
+		return (-1);
+	}
+	
+	return (0);
+#else
+	/* Legacy ENGINE API for OpenSSL < 3.0 */
 	ENGINE *e;
 
 	if (!engine_id)
@@ -447,6 +465,7 @@ load_engine(const char *engine_id)
 	}
 	ENGINE_register_complete(e);
 	return (0);
+#endif
 }
 
 static protocol_t *

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<profile name="ENA">
+	<group nthreads="$conn">
+		<transaction iterations="$iter">
+			<flowop type="accept" options="remotehost=$h protocol=$proto tcp_nodelay"/>
+		</transaction>
+		<transaction duration="120s">
+			<flowop type="read"  options="size=64"/>
+			<flowop type="write" options="size=64"/>
+			<flowop type="think" options="size=64"/>
+		</transaction>
+		<transaction iterations="$iter">
+		    <flowop type="connect" options="remotehost=$h protocol=$proto"/>
+		</transaction>
+		<transaction iterations="$iter">
+			<flowop type="disconnect" />
+		</transaction>
+	</group>
+</profile>

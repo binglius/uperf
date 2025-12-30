@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
 #include <inttypes.h>
 #include "uperf.h"
@@ -100,8 +101,11 @@ newstat_begin(strand_t *s, newstats_t *ns, uint64_t size, uint64_t count)
 {
 	if (ns == NULL)
 		return (0);
-	if (ns->start_time == 0)
+	if (ns->start_time == 0) {
 		ns->start_time = GETHRTIME();
+		/* Initialize response times array on first use */
+		init_response_times(ns);
+	}
 	if (ns->min == 0)
 		ns->min = ULONG_MAX;
 	ns->time_used_start = GETHRTIME();
@@ -131,6 +135,10 @@ newstat_end(strand_t *s, newstats_t *ns, uint64_t size, uint64_t count)
 	ns->time_used += delta;
 	ns->max = MAX(ns->max, delta);
 	ns->min = MIN(ns->min, delta);
+	
+	/* Collect response time for percentile calculation */
+	add_response_time(ns, delta);
+	
 #ifdef USE_CPC
 	if (s && ENABLED_CPUCOUNTER_STATS(options)) {
 		hwcounter_snap(&s->hw, SNAP_END);
@@ -209,6 +217,25 @@ add_stats(newstats_t *s1, newstats_t *s2)
 	s1->end_time = MAX(s1->end_time, s2->end_time);
 	s1->max = MAX(s1->max, s2->max);
 	s1->min = MIN(s1->min, s2->min);
+	
+	/* Merge response times arrays */
+	if (s2->response_times && s2->rt_count > 0) {
+		if (s1->response_times == NULL) {
+			init_response_times(s1);
+		}
+		
+		/* Ensure s1 has enough capacity */
+		while (s1->rt_count + s2->rt_count > s1->rt_capacity) {
+			s1->rt_capacity *= 2;
+			s1->response_times = (uint64_t*)realloc(s1->response_times, 
+				s1->rt_capacity * sizeof(uint64_t));
+		}
+		
+		/* Copy response times from s2 to s1 */
+		memcpy(&s1->response_times[s1->rt_count], s2->response_times, 
+			s2->rt_count * sizeof(uint64_t));
+		s1->rt_count += s2->rt_count;
+	}
 }
 
 void
@@ -260,4 +287,65 @@ history_record(strand_t *s, uint32_t type, uint64_t etime,
 		flush_history(s);
 	}
 	s->history[s->hsize++] = h;
+}
+
+static int
+compare_uint64(const void *a, const void *b)
+{
+	uint64_t ua = *(const uint64_t*)a;
+	uint64_t ub = *(const uint64_t*)b;
+	return (ua > ub) - (ua < ub);
+}
+
+void
+init_response_times(newstats_t *ns)
+{
+	ns->rt_capacity = 1024;
+	ns->response_times = (uint64_t*)malloc(ns->rt_capacity * sizeof(uint64_t));
+	ns->rt_count = 0;
+	ns->p0 = ns->p50 = ns->p99 = ns->p999 = ns->p9999 = ns->p99999 = 0;
+}
+
+void
+add_response_time(newstats_t *ns, uint64_t response_time)
+{
+	if (ns->response_times == NULL) {
+		init_response_times(ns);
+	}
+	
+	if (ns->rt_count >= ns->rt_capacity) {
+		ns->rt_capacity *= 2;
+		ns->response_times = (uint64_t*)realloc(ns->response_times, 
+			ns->rt_capacity * sizeof(uint64_t));
+	}
+	
+	ns->response_times[ns->rt_count++] = response_time;
+}
+
+void
+calculate_percentiles(newstats_t *ns)
+{
+	if (ns->rt_count == 0 || ns->response_times == NULL) {
+		return;
+	}
+	
+	qsort(ns->response_times, ns->rt_count, sizeof(uint64_t), compare_uint64);
+	
+	ns->p0 = ns->response_times[0];
+	ns->p50 = ns->response_times[(int)(ns->rt_count * 0.50)];
+	ns->p99 = ns->response_times[(int)(ns->rt_count * 0.99)];
+	ns->p999 = ns->response_times[(int)(ns->rt_count * 0.999)];
+	ns->p9999 = ns->response_times[(int)(ns->rt_count * 0.9999)];
+	ns->p99999 = ns->response_times[(int)(ns->rt_count * 0.99999)];
+}
+
+void
+free_response_times(newstats_t *ns)
+{
+	if (ns->response_times) {
+		free(ns->response_times);
+		ns->response_times = NULL;
+		ns->rt_count = 0;
+		ns->rt_capacity = 0;
+	}
 }
